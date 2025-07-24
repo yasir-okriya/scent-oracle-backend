@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Email and password required" }, 400);
     }
 
-    // Check if admin already exists using .maybeSingle()
+    // Check if admin already exists
     const { data: existingAdmin, error: lookupError } = await supabase
       .from("admins")
       .select("id")

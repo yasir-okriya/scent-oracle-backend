@@ -1,32 +1,80 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.39.3";
+import * as bcrypt from "npm:bcryptjs";
+import { create, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
-// Setup type definitions for built-in Supabase Runtime APIs
-import "jsr:@supabase/functions-js/edge-runtime.d.ts"
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_ANON_KEY")!
+);
 
-console.log("Hello from Functions!")
+const JWT_SECRET_KEY = await crypto.subtle.importKey(
+  "raw",
+  new TextEncoder().encode(Deno.env.get("JWT_SECRET")!),
+  { name: "HMAC", hash: "SHA-256" },
+  false,
+  ["sign", "verify"]
+);
 
 Deno.serve(async (req) => {
-  const { name } = await req.json()
-  const data = {
-    message: `Hello ${name}!`,
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders(),
+    });
   }
 
-  return new Response(
-    JSON.stringify(data),
-    { headers: { "Content-Type": "application/json" } },
-  )
-})
+  try {
+    const { email, password } = await req.json();
 
-/* To invoke locally:
+    if (!email || !password) {
+      return jsonResponse({ error: "Email and password are required" }, 400);
+    }
 
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
+    const { data: admin, error } = await supabase
+      .from("admins")
+      .select("id, email, password")
+      .eq("email", email)
+      .single();
 
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/admin-login' \
-    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0' \
-    --header 'Content-Type: application/json' \
-    --data '{"name":"Functions"}'
+    if (error || !admin) {
+      return jsonResponse({ error: "Invalid email or password" }, 401);
+    }
 
-*/
+    const passwordMatch = bcrypt.compareSync(password, admin.password);
+
+    if (!passwordMatch) {
+      return jsonResponse({ error: "Invalid email or password" }, 401);
+    }
+
+    const jwt = await create(
+      { alg: "HS256", typ: "JWT" },
+      {
+        id: admin.id,
+        email: admin.email,
+        exp: getNumericDate(3600 * 2 * 24), 
+      },
+      JWT_SECRET_KEY
+    );
+
+    return jsonResponse({ token: jwt }, 200);
+  } catch (_err) {
+    return jsonResponse({ error: "Invalid JSON or server error" }, 500);
+  }
+});
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Content-Type": "application/json",
+  };
+}
+
+function jsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: corsHeaders(),
+  });
+}
