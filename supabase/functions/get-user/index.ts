@@ -18,7 +18,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token } = await req.json();
+    const token = req.headers.get("access-token")?.trim() ||
+      (await req.json().catch(() => ({}))).token;
 
     if (!token || typeof token !== "string") {
       return jsonResponse({ error: "Token is required in request body" }, 400);
@@ -31,12 +32,11 @@ Deno.serve(async (req) => {
       false,
       ["sign", "verify"],
     );
-    
 
     let payload: { id?: string; email?: string; exp?: number } | undefined;
     try {
       const result = await verify(token, JWT_SECRET_KEY);
-  
+
       payload = result as {
         id?: string;
         email?: string;
@@ -45,7 +45,6 @@ Deno.serve(async (req) => {
     } catch (_err) {
       return jsonResponse({ error: "Invalid or expired token" }, 401);
     }
-
 
     const userId = payload?.id;
     if (!userId) {
@@ -72,7 +71,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, access-token",
     "Content-Type": "application/json",
   };
 }

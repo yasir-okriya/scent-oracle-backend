@@ -2,7 +2,6 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.3";
 import * as bcrypt from "npm:bcryptjs";
 import { create, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
-import { decode } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
